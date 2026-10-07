@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>먼작귀 배구</title>
+<style>
+  :root {
+    --bg: #fff4e6;
+    --ink: #4b3a34;
+    --muted: #9a8478;
+    --pink: #ff8fa3;
+    --blue: #7fa3d6;
+    --yellow: #f8e7a2;
+    --card: #ffffff;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    display: flex; flex-direction: column; align-items: center; padding: 16px;
+  }
+  h1 { margin: 4px 0 12px; font-size: 1.6rem; }
+  #wrap { position: relative; width: 100%; max-width: 960px; }
+  canvas#game { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(75,58,52,.15); background: #bde7ff; touch-action: none; }
+
+  .overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(255,244,230,.82); backdrop-filter: blur(3px); border-radius: 18px; overflow-y: auto; padding: 12px; }
+  .overlay.hidden { display: none; }
+  .box { background: var(--card); border-radius: 16px; padding: 16px 20px; width: 100%; max-width: 640px;
+    box-shadow: 0 4px 16px rgba(75,58,52,.12); }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .row > span.label { width: 92px; font-size: .85rem; color: var(--muted); font-weight: 600; }
+  .opt, .char { border: 2px solid #eadccf; background: #fffaf4; color: var(--ink); border-radius: 10px;
+    padding: 6px 12px; font-size: .9rem; font-weight: 600; cursor: pointer; }
+  .opt.sel, .char.sel { border-color: var(--pink); background: #ffe8ec; }
+  .char { padding: 4px; display: flex; flex-direction: column; align-items: center; font-size: .8rem; }
+  .char canvas { width: 64px; height: 76px; }
+  .start { width: 100%; border: none; border-radius: 12px; padding: 12px; font-size: 1.1rem; font-weight: 700;
+    background: var(--pink); color: white; cursor: pointer; margin-top: 4px; }
+  .start.sub { background: #eadccf; color: var(--ink); }
+  .keys { font-size: .8rem; color: var(--muted); line-height: 1.6; margin-top: 10px; }
+  kbd { background: #f3e9df; border-radius: 4px; padding: 0 5px; font-size: .75rem; color: var(--ink); }
+  .over-title { font-size: 1.6rem; font-weight: 800; text-align: center; margin: 4px 0; }
+  .over-score { font-size: 1.1rem; text-align: center; color: var(--muted); margin-bottom: 12px; }
+  .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  #touch { display: none; width: 100%; max-width: 960px; margin-top: 12px; justify-content: space-between; gap: 12px;
+    user-select: none; -webkit-user-select: none; }
+  #touch.show { display: flex; }
+  #touch .grp { display: flex; gap: 10px; }
+  #touch button { width: 72px; height: 72px; border-radius: 50%; border: none; font-size: 1rem; font-weight: 700;
+    background: white; color: var(--ink); box-shadow: 0 3px 8px rgba(75,58,52,.18); touch-action: none; }
+  #touch button.on { background: #ffe8ec; transform: scale(.95); }
+  footer { margin-top: 14px; font-size: .75rem; color: var(--muted); text-align: center; }
+</style>
+</head>
+<body>
+<h1>🏐 먼작귀 배구</h1>
+
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <div class="overlay" id="menu">
+    <div class="box">
+      <div class="row"><span class="label">모드</span>
+        <button class="opt sel" data-group="mode" data-val="cpu">1인 (vs CPU)</button>
+        <button class="opt" data-group="mode" data-val="2p">2인 (한 키보드)</button>
+      </div>
+      <div class="row" id="diffRow"><span class="label">난이도</span>
+        <button class="opt" data-group="diff" data-val="easy">쉬움</button>
+        <button class="opt sel" data-group="diff" data-val="normal">보통</button>
+        <button class="opt" data-group="diff" data-val="hard">어려움</button>
+      </div>
+      <div class="row"><span class="label">목표 점수</span>
+        <button class="opt" data-group="target" data-val="7">7점</button>
+        <button class="opt sel" data-group="target" data-val="11">11점</button>
+        <button class="opt" data-group="target" data-val="15">15점</button>
+      </div>
+      <div class="row"><span class="label">1P (왼쪽)</span><span class="chars" data-group="c1"></span></div>
+      <div class="row"><span class="label" id="c2Label">CPU (오른쪽)</span><span class="chars" data-group="c2"></span></div>
+      <button class="start" id="startBtn">시작!</button>
+      <div class="keys">
+        <b>1P</b> <kbd>A</kbd><kbd>D</kbd> 이동 · <kbd>W</kbd> 점프 · <kbd>S</kbd> 또는 <kbd>Space</kbd> 스파이크
+        <span id="arrowHint">(1인 모드에선 방향키 + <kbd>↓</kbd>도 가능)</span><br>
+        <b>2P</b> <kbd>←</kbd><kbd>→</kbd> 이동 · <kbd>↑</kbd> 점프 · <kbd>↓</kbd> 또는 <kbd>Enter</kbd> 스파이크 &nbsp;·&nbsp; <kbd>Esc</kbd> 일시정지<br>
+        점프한 상태에서 스파이크 키를 누르고 공에 닿으면 강스파이크! 공이 상대 코트 바닥에 떨어지면 득점이에요.<br>
+        치이카와: 균형형 · 하치와레: 빠름 · 우사기: 점프력·파워 최고
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="over">
+    <div class="box" style="max-width:420px">
+      <div class="over-title" id="overTitle"></div>
+      <div class="over-score" id="overScore"></div>
+      <div class="btns">
+        <button class="start" id="againBtn">다시 하기</button>
+        <button class="start sub" id="menuBtn">메뉴로</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="touch">
+  <div class="grp">
+    <button data-k="left">◀</button>
+    <button data-k="right">▶</button>
+  </div>
+  <div class="grp">
+    <button data-k="spike">스파이크</button>
+    <button data-k="jump">점프</button>
+  </div>
+</div>
+
+<footer>비공식 팬 게임입니다. 캐릭터 원작: 나가노(ナガノ) 「먼가 작고 귀여운 녀석」</footer>
+
+<script>
+// ===== 상수 =====
+const W = 800, H = 450, GROUND = 400;
+const NET_X = 400, NET_W = 10, NET_TOP = 255;
+const G = 0.6, BALL_G = 0.32, MAX_SPEED = 20;
+const PR = 34, BALL_R = 18;
+const STEP = 1000 / 60;
+
+const CHARS = {
+  chiikawa:  { name: '치이카와', speed: 5.3, jump: 13.0, power: 1.0 },
+  hachiware: { name: '하치와레', speed: 6.0, jump: 12.6, power: 0.95 },
+  usagi:     { name: '우사기',   speed: 5.0, jump: 14.0, power: 1.1 },
+};
+const DIFF = {
+  easy:   { err: 45, react: 22, jump: 0.03, spike: 0.04 },
+  normal: { err: 20, react: 10, jump: 0.08, spike: 0.15 },
+  hard:   { err: 6,  react: 3,  jump: 0.2,  spike: 0.5 },
+};
+const COL = {
+  line: '#4b3a34', white: '#fffdf7', blue: '#7fa3d6', yellow: '#f8e7a2',
+  pink: '#f7a8b8', cheek: 'rgba(247,130,155,.7)',
+};
+
+const settings = { mode: 'cpu', diff: 'normal', target: 11, c1: 'chiikawa', c2: 'hachiware' };
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resize();
+
+// ===== 캐릭터 그리기 =====
+function drawChar(c, type, x, y, face, o = {}) {
+  const R = PR;
+  const body = type === 'usagi' ? COL.yellow : COL.white;
+  const fillStroke = col => { c.fillStyle = col; c.fill(); c.stroke(); };
+  c.save();
+  c.translate(x, y);
+  const sq = o.squash || 0;
+  c.scale(face * (1 + sq), 1 - sq);
+  c.lineWidth = 2.5; c.strokeStyle = COL.line; c.lineJoin = 'round'; c.lineCap = 'round';
+
+  // 귀
+  if (type === 'chiikawa') {
+    for (const s of [-1, 1]) { c.beginPath(); c.arc(s * 19, -R * 2 + 8, 9, 0, Math.PI * 2); fillStroke(body); }
+  } else if (type === 'hachiware') {
+    for (const s of [-1, 1]) {
+      c.beginPath(); c.moveTo(s * 31, -R * 2 + 18); c.lineTo(s * 25, -R * 2 - 8); c.lineTo(s * 7, -R * 2 + 4); c.closePath();
+      fillStroke(COL.blue);
+    }
+  } else {
+    for (const s of [-1, 1]) {
+      c.save(); c.translate(s * 11, -R * 2 - 14); c.rotate(s * 0.12);
+      c.beginPath(); c.ellipse(0, 0, 8, 24, 0, 0, Math.PI * 2); fillStroke(body);
+      c.beginPath(); c.ellipse(0, 3, 3.5, 15, 0, 0, Math.PI * 2); c.fillStyle = COL.pink; c.fill();
+      c.restore();
+    }
+  }
+
+  // 팔 (뒤쪽 팔, 앞쪽 팔)
+  c.beginPath(); c.ellipse(-R + 1, -R + 8, 8, 6, 0.5, 0, Math.PI * 2); fillStroke(body);
+  if (o.spike) { c.beginPath(); c.ellipse(R - 6, -R * 2 + 2, 7, 10, 0.4, 0, Math.PI * 2); fillStroke(body); }
+  else { c.beginPath(); c.ellipse(R - 1, -R + 8, 8, 6, -0.5, 0, Math.PI * 2); fillStroke(body); }
+
+  // 발
+  for (const s of [-1, 1]) { c.beginPath(); c.ellipse(s * 13, -3, 10, 5, 0, 0, Math.PI * 2); fillStroke(body); }
+
+  // 몸
+  c.beginPath(); c.ellipse(0, -R, R + 2, R, 0, 0, Math.PI * 2);
+  c.fillStyle = body; c.fill();
+  if (type === 'hachiware') {
+    c.save(); c.clip();
+    c.beginPath();
+    c.moveTo(-R - 4, -2 * R - 4); c.lineTo(R + 4, -2 * R - 4); c.lineTo(R + 4, -R + 4);
+    c.lineTo(22, -R - 7); c.lineTo(6, -R - 14); c.lineTo(0, -R - 25); c.lineTo(-6, -R - 14);
+    c.lineTo(-22, -R - 7); c.lineTo(-R - 4, -R + 4); c.closePath();
+    c.fillStyle = COL.blue; c.fill();
+    c.lineWidth = 1.5; c.stroke();
+    c.restore();
+  }
+  c.beginPath(); c.ellipse(0, -R, R + 2, R, 0, 0, Math.PI * 2); c.stroke();
+
+  // 얼굴
+  const fx = 3, ey = -R + 1;
+  for (const s of [-1, 1]) {
+    if (o.happy) {
+      c.beginPath(); c.arc(fx + s * 11, ey + 2, 4, Math.PI * 1.1, Math.PI * 1.9); c.stroke();
+    } else {
+      c.beginPath(); c.ellipse(fx + s * 11, ey, 3.6, 4.6, 0, 0, Math.PI * 2); c.fillStyle = COL.line; c.fill();
+      c.beginPath(); c.arc(fx + s * 11 + 1.2, ey - 1.6, 1.3, 0, Math.PI * 2); c.fillStyle = 'white'; c.fill();
+    }
+    c.beginPath(); c.ellipse(fx + s * 20, ey + 8, 6, 3.5, 0, 0, Math.PI * 2); c.fillStyle = COL.cheek; c.fill();
+  }
+  c.lineWidth = 2;
+  if (type === 'chiikawa') {
+    c.beginPath(); c.arc(fx, ey + 7, 2.5, 0, Math.PI); c.stroke();
+  } else if (type === 'hachiware') {
+    c.beginPath(); c.arc(fx - 2.5, ey + 7, 2.5, 0, Math.PI); c.stroke();
+    c.beginPath(); c.arc(fx + 2.5, ey + 7, 2.5, 0, Math.PI); c.stroke();
+  } else {
+    c.beginPath(); c.ellipse(fx, ey + 10, 4, o.happy ? 6 : 4.5, 0, 0, Math.PI * 2);
+    c.fillStyle = '#8a3b3b'; c.fill(); c.stroke();
+  }
+  c.restore();
+}
+
+// ===== 사운드 =====
+let actx = null;
+function sfx(type) {
+  if (!actx) return;
+  const map = {
+    hit: [520, 0.08, 'square', 0.05], spike: [180, 0.18, 'sawtooth', 0.07], jump: [380, 0.06, 'sine', 0.04],
+    net: [140, 0.08, 'triangle', 0.06], point: [660, 0.3, 'triangle', 0.07], swing: [300, 0.05, 'sine', 0.03],
+  };
+  const [f, d, wave, vol] = map[type];
+  try {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = wave; o.frequency.value = f;
+    if (type === 'point') o.frequency.linearRampToValueAtTime(f * 1.5, actx.currentTime + d);
+    g.gain.value = vol; g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + d);
+    o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + d);
+  } catch {}
+}
+
+// ===== 입력 =====
+const keys = {};
+const touch = { left: false, right: false, jump: false, spike: false };
+const GAME_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', 'Enter'];
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (game && game.phase !== 'over' && GAME_KEYS.includes(e.code)) e.preventDefault();
+  if ((e.code === 'Escape' || e.code === 'KeyP') && game && game.phase !== 'over') paused = !paused;
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+document.querySelectorAll('#touch button').forEach(b => {
+  const k = b.dataset.k;
+  const set = v => e => { e.preventDefault(); touch[k] = v; b.classList.toggle('on', v); };
+  b.addEventListener('pointerdown', set(true));
+  b.addEventListener('pointerup', set(false));
+  b.addEventListener('pointercancel', set(false));
+  b.addEventListener('pointerleave', set(false));
+});
+
+// ===== 게임 상태 =====
+let game = null, paused = false, tick = 0;
+const clouds = [{ x: 90, y: 70, s: 1 }, { x: 330, y: 45, s: 0.7 }, { x: 560, y: 90, s: 1.2 }, { x: 740, y: 50, s: 0.8 }];
+
+function makePlayer(side, char) {
+  return { side, char, x: 0, y: GROUND, vx: 0, vy: 0, onGround: true, spike: 0, spikePrev: false,
+    hitCD: 0, land: 0, input: {}, ai: { err: 0, react: 0, lastMine: false } };
+}
+
+function newGame() {
+  game = {
+    players: [makePlayer(0, settings.c1), makePlayer(1, settings.c2)],
+    ball: { x: 0, y: 0, vx: 0, vy: 0, r: BALL_R, rot: 0, spiked: 0, trail: [] },
+    score: [0, 0], phase: 'serve', timer: 0, lastWinner: -1, shake: 0,
+  };
+  paused = false;
+  resetRally(Math.random() < 0.5 ? 0 : 1);
+}
+
+function resetRally(server) {
+  const [a, b] = game.players;
+  for (const p of game.players) Object.assign(p, { y: GROUND, vx: 0, vy: 0, onGround: true, spike: 0, hitCD: 0 });
+  a.x = 200; b.x = 600;
+  Object.assign(game.ball, { x: server === 0 ? 200 : 600, y: 110, vx: 0, vy: 0, spiked: 0, trail: [] });
+  game.phase = 'serve'; game.timer = 50; game.lastWinner = -1;
+}
+
+// ===== AI =====
+function predictX(b) {
+  let { x, y, vx, vy } = b;
+  for (let i = 0; i < 300; i++) {
+    vy += BALL_G; x += vx; y += vy;
+    if (x < b.r) { x = b.r; vx = Math.abs(vx); }
+    if (x > W - b.r) { x = W - b.r; vx = -Math.abs(vx); }
+    if (y > NET_TOP && Math.abs(x - NET_X) < NET_W / 2 + b.r) { vx = -vx; x += vx * 2; }
+    if (vy > 0 && y >= GROUND - PR * 2 - 6) return x;
+  }
+  return x;
+}
+
+function aiControl(p) {
+  const d = DIFF[settings.diff], b = game.ball, inp = p.input;
+  inp.left = inp.right = inp.jump = inp.spike = false;
+  const mine = x => (p.side === 0 ? x < NET_X : x > NET_X);
+  const dir = p.side === 0 ? 1 : -1;
+  const px = predictX(b);
+  const landingMine = mine(px);
+  if (landingMine && !p.ai.lastMine) {
+    p.ai.err = (Math.random() - 0.5) * 2 * d.err;
+    p.ai.react = d.react;
+  }
+  p.ai.lastMine = landingMine;
+
+  let target = p.side === 0 ? 200 : 600;
+  if (game.phase !== 'point' && landingMine) target = px - dir * 18 + p.ai.err;
+
+  if (p.ai.react > 0) p.ai.react--;
+  else if (target < p.x - 5) inp.left = true;
+  else if (target > p.x + 5) inp.right = true;
+
+  if (game.phase !== 'play') return;
+  const dx = b.x - p.x, dy = (p.y - PR) - b.y;
+  if (mine(b.x) && p.onGround && Math.abs(dx) < 55 && dy > 70 && dy < 190 && b.vy > 0 && Math.random() < d.jump) inp.jump = true;
+  if (!p.onGround && Math.hypot(dx, dy) < PR + b.r + 40 && Math.random() < d.spike) inp.spike = true;
+}
+
+// ===== 업데이트 =====
+function readInputs() {
+  const [p1, p2] = game.players, k = keys, solo = settings.mode === 'cpu';
+  p1.input = {
+    left: k.KeyA || (solo && k.ArrowLeft) || touch.left,
+    right: k.KeyD || (solo && k.ArrowRight) || touch.right,
+    jump: k.KeyW || (solo && k.ArrowUp) || touch.jump,
+    spike: k.KeyS || k.Space || (solo && k.ArrowDown) || touch.spike,
+  };
+  if (solo) aiControl(p2);
+  else p2.input = { left: k.ArrowLeft, right: k.ArrowRight, jump: k.ArrowUp, spike: k.ArrowDown || k.Enter };
+}
+
+function updatePlayer(p) {
+  const st = CHARS[p.char], inp = p.input;
+  p.vx = ((inp.right ? 1 : 0) - (inp.left ? 1 : 0)) * st.speed;
+  p.x += p.vx;
+  const minX = p.side === 0 ? PR : NET_X + NET_W / 2 + PR;
+  const maxX = p.side === 0 ? NET_X - NET_W / 2 - PR : W - PR;
+  p.x = clamp(p.x, minX, maxX);
+  if (inp.jump && p.onGround) { p.vy = -st.jump; p.onGround = false; sfx('jump'); }
+  if (inp.spike && !p.spikePrev && !p.onGround && p.spike <= 0) { p.spike = 16; sfx('swing'); }
+  p.spikePrev = inp.spike;
+  if (p.spike > 0) p.spike--;
+  if (p.hitCD > 0) p.hitCD--;
+  if (p.land > 0) p.land--;
+  if (!p.onGround) {
+    p.vy += G; p.y += p.vy;
+    if (p.y >= GROUND) { p.y = GROUND; p.vy = 0; p.onGround = true; p.land = 8; }
+  }
+}
+
+function spikeVelocity(b, p) {
+  const dir = p.side === 0 ? 1 : -1;
+  const vx = dir * 13.5 * CHARS[p.char].power;
+  const opts = [];
+  for (let tx = NET_X + dir * 60; dir > 0 ? tx < W - 30 : tx > 30; tx += dir * 20) {
+    const T = Math.abs(tx - b.x) / Math.abs(vx);
+    const vy = (GROUND - b.r - b.y - 0.5 * BALL_G * T * T) / T;
+    const Tn = Math.abs(NET_X - b.x) / Math.abs(vx);
+    const yNet = b.y + vy * Tn + 0.5 * BALL_G * Tn * Tn;
+    if (yNet < NET_TOP - b.r - 8 && vy > -8) opts.push(vy);
+  }
+  if (!opts.length) return { vx, vy: -5 };
+  return { vx, vy: opts[Math.floor(Math.random() * Math.min(opts.length, 6))] };
+}
+
+function collide(p, b) {
+  if (p.hitCD > 0) return;
+  const cx = p.x, cy = p.y - PR;
+  const dx = b.x - cx, dy = b.y - cy, d = Math.hypot(dx, dy);
+  if (d >= PR + b.r || d === 0) return;
+  const nx = dx / d, ny = dy / d;
+  b.x = cx + nx * (PR + b.r + 1); b.y = cy + ny * (PR + b.r + 1);
+  const st = CHARS[p.char], dir = p.side === 0 ? 1 : -1;
+  if (p.spike > 0 && ny < 0.5) {
+    const v = spikeVelocity(b, p);
+    b.vx = v.vx; b.vy = v.vy; b.spiked = 40;
+    game.shake = 8; p.spike = 0;
+    sfx('spike');
+  } else {
+    const rel = Math.hypot(b.vx - p.vx, b.vy - p.vy);
+    const out = clamp(rel * 0.8, 9, 13) * st.power;
+    b.vx = nx * out + p.vx * 0.35 + dir * 1.2;
+    b.vy = ny * out;
+    if (ny < 0.3 && b.vy > -8) b.vy = -8 - Math.random() * 2;
+    if (!p.onGround && p.vy < 0) b.vy += p.vy * 0.3;
+    if (b.vx * dir < 3) b.vx = dir * (3 + Math.random() * 3);
+    sfx('hit');
+  }
+  p.hitCD = 8;
+}
+
+function updateBall(active) {
+  const b = game.ball;
+  b.vy += BALL_G;
+  const sp = Math.hypot(b.vx, b.vy);
+  if (sp > MAX_SPEED) { b.vx *= MAX_SPEED / sp; b.vy *= MAX_SPEED / sp; }
+  b.x += b.vx; b.y += b.vy; b.rot += b.vx * 0.05;
+
+  if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx) * 0.9; }
+  if (b.x > W - b.r) { b.x = W - b.r; b.vx = -Math.abs(b.vx) * 0.9; }
+  if (b.y < b.r) { b.y = b.r; b.vy = Math.abs(b.vy) * 0.8; }
+
+  // 네트
+  const nl = NET_X - NET_W / 2, nr = NET_X + NET_W / 2;
+  if (b.x > nl && b.x < nr && b.y > NET_TOP) {
+    b.x = b.x < NET_X ? nl - b.r : nr + b.r; b.vx = -b.vx * 0.8; sfx('net');
+  } else {
+    const cx = clamp(b.x, nl, nr), cy = clamp(b.y, NET_TOP, GROUND);
+    const dx = b.x - cx, dy = b.y - cy, d = Math.hypot(dx, dy);
+    if (d < b.r && d > 0) {
+      const nx = dx / d, ny = dy / d;
+      b.x = cx + nx * b.r; b.y = cy + ny * b.r;
+      const dot = b.vx * nx + b.vy * ny;
+      if (dot < 0) { b.vx -= 1.7 * dot * nx; b.vy -= 1.7 * dot * ny; sfx('net'); }
+    }
+  }
+
+  if (active) for (const p of game.players) collide(p, b);
+
+  if (b.y + b.r >= GROUND) {
+    b.y = GROUND - b.r;
+    if (active) scorePoint(b.x < NET_X ? 1 : 0);
+    b.vy = -Math.abs(b.vy) * 0.5; b.vx *= 0.7;
+  }
+
+  if (b.spiked > 0) b.spiked--;
+  b.trail.push({ x: b.x, y: b.y });
+  if (b.trail.length > 8) b.trail.shift();
+}
+
+function scorePoint(w) {
+  game.score[w]++;
+  game.lastWinner = w;
+  game.phase = 'point'; game.timer = 110;
+  sfx('point');
+}
+
+function update() {
+  if (!game || paused || game.phase === 'over') return;
+  tick++;
+  readInputs();
+  game.players.forEach(updatePlayer);
+  if (game.phase === 'serve') {
+    if (--game.timer <= 0) game.phase = 'play';
+  } else {
+    updateBall(game.phase === 'play');
+  }
+  if (game.phase === 'point' && --game.timer <= 0) {
+    const w = game.lastWinner;
+    if (game.score[w] >= settings.target) {
+      game.phase = 'over';
+      showOver(w);
+    } else resetRally(w);
+  }
+  if (game.shake > 0) game.shake--;
+}
+
+// ===== 렌더링 =====
+function drawCloud(c, x, y, s) {
+  c.save(); c.translate(x, y); c.scale(s, s); c.fillStyle = 'rgba(255,255,255,.9)';
+  c.beginPath();
+  c.arc(0, 0, 22, 0, Math.PI * 2); c.arc(24, -10, 26, 0, Math.PI * 2); c.arc(50, 0, 20, 0, Math.PI * 2);
+  c.fill(); c.restore();
+}
+
+function drawBall(c, b) {
+  if (b.spiked > 0) {
+    b.trail.forEach((t, i) => {
+      c.beginPath(); c.arc(t.x, t.y, b.r * (i / b.trail.length), 0, Math.PI * 2);
+      c.fillStyle = `rgba(255,143,163,${0.35 * i / b.trail.length})`; c.fill();
+    });
+  }
+  c.save(); c.translate(b.x, b.y); c.rotate(b.rot);
+  c.beginPath(); c.arc(0, 0, b.r, 0, Math.PI * 2);
+  c.fillStyle = '#ffffff'; c.fill();
+  c.save(); c.clip();
+  const cols = ['#ffd45c', '#7fa3d6', '#ffffff'];
+  for (let k = 0; k < 3; k++) {
+    c.rotate(Math.PI * 2 / 3);
+    c.beginPath(); c.moveTo(0, 0);
+    c.quadraticCurveTo(b.r * 0.9, -b.r * 0.2, b.r * 1.2, b.r * 0.6);
+    c.lineTo(b.r * 1.2, -b.r * 1.2);
+    c.quadraticCurveTo(b.r * 0.2, -b.r * 0.9, 0, 0);
+    c.fillStyle = cols[k]; c.fill();
+  }
+  c.restore();
+  c.lineWidth = 2.5; c.strokeStyle = COL.line;
+  c.beginPath(); c.arc(0, 0, b.r, 0, Math.PI * 2); c.stroke();
+  c.restore();
+}
+
+function outlinedText(c, text, x, y, size, fill) {
+  c.font = `800 ${size}px -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif`;
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.lineWidth = size / 6; c.strokeStyle = 'white'; c.strokeText(text, x, y);
+  c.fillStyle = fill; c.fillText(text, x, y);
+}
+
+function render() {
+  const c = ctx;
+  c.save();
+  c.clearRect(0, 0, W, H);
+  if (game && game.shake > 0) c.translate((Math.random() - 0.5) * game.shake, (Math.random() - 0.5) * game.shake);
+
+  // 하늘
+  const sky = c.createLinearGradient(0, 0, 0, GROUND);
+  sky.addColorStop(0, '#a9dcff'); sky.addColorStop(1, '#fff1df');
+  c.fillStyle = sky; c.fillRect(-10, -10, W + 20, GROUND + 10);
+  for (const cl of clouds) drawCloud(c, ((cl.x + tick * 0.15 * cl.s) % (W + 120)) - 60, cl.y, cl.s);
+
+  // 바닥
+  c.fillStyle = '#f4dca6'; c.fillRect(-10, GROUND, W + 20, H - GROUND + 10);
+  c.fillStyle = '#e8c88a'; c.fillRect(-10, GROUND, W + 20, 4);
+  c.fillStyle = 'rgba(255,255,255,.6)'; c.fillRect(40, GROUND + 18, W - 80, 3);
+
+  // 네트
+  c.fillStyle = '#ffffff'; c.strokeStyle = COL.line; c.lineWidth = 2;
+  c.fillRect(NET_X - NET_W / 2, NET_TOP, NET_W, GROUND - NET_TOP);
+  c.strokeRect(NET_X - NET_W / 2, NET_TOP, NET_W, GROUND - NET_TOP);
+  c.fillStyle = '#ff8fa3';
+  c.beginPath(); c.roundRect(NET_X - 9, NET_TOP - 6, 18, 12, 4); c.fill(); c.stroke();
+
+  if (game) {
+    const b = game.ball;
+    // 그림자
+    c.fillStyle = 'rgba(75,58,52,.15)';
+    for (const p of game.players) {
+      const s = clamp(1 - (GROUND - p.y) / 300, 0.4, 1);
+      c.beginPath(); c.ellipse(p.x, GROUND + 3, 30 * s, 6 * s, 0, 0, Math.PI * 2); c.fill();
+    }
+    const bs = clamp(1 - (GROUND - b.y) / 400, 0.3, 1);
+    c.beginPath(); c.ellipse(b.x, GROUND + 3, 16 * bs, 4 * bs, 0, 0, Math.PI * 2); c.fill();
+
+    // 캐릭터
+    for (const p of game.players) {
+      const sq = p.onGround ? (p.land > 0 ? 0.08 : 0) : -0.06;
+      const happy = (game.phase === 'point' || game.phase === 'over') && game.lastWinner === p.side;
+      drawChar(c, p.char, p.x, p.y, p.side === 0 ? 1 : -1, { squash: sq, spike: p.spike > 0, happy });
+    }
+    drawBall(c, b);
+
+    // 점수
+    const [p1, p2] = game.players;
+    outlinedText(c, game.score[0], 70, 42, 44, COL.line);
+    outlinedText(c, game.score[1], W - 70, 42, 44, COL.line);
+    outlinedText(c, CHARS[p1.char].name + ' (1P)', 70, 78, 15, COL.line);
+    outlinedText(c, CHARS[p2.char].name + (settings.mode === 'cpu' ? ' (CPU)' : ' (2P)'), W - 70, 78, 15, COL.line);
+    outlinedText(c, `${settings.target}점 선승`, W / 2, 24, 14, '#9a8478');
+
+    if (game.phase === 'point') {
+      const name = CHARS[game.players[game.lastWinner].char].name;
+      outlinedText(c, `${name} 득점!`, W / 2, 150, 40, '#ff6f8b');
+    } else if (game.phase === 'serve' && game.score[0] + game.score[1] === 0) {
+      outlinedText(c, 'Ready?', W / 2, 150, 40, '#ff6f8b');
+    }
+    if (paused) {
+      c.fillStyle = 'rgba(255,244,230,.6)'; c.fillRect(-10, -10, W + 20, H + 20);
+      outlinedText(c, '일시정지', W / 2, H / 2 - 10, 44, COL.line);
+      outlinedText(c, 'Esc를 눌러 계속하기', W / 2, H / 2 + 34, 18, '#9a8478');
+    }
+  }
+  c.restore();
+}
+
+let last = performance.now(), acc = 0;
+function frame(now) {
+  acc += Math.min(100, now - last); last = now;
+  while (acc >= STEP) { update(); acc -= STEP; }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ===== 메뉴 =====
+const menu = document.getElementById('menu'), over = document.getElementById('over');
+
+document.querySelectorAll('.chars').forEach(wrap => {
+  const group = wrap.dataset.group;
+  for (const [type, info] of Object.entries(CHARS)) {
+    const btn = document.createElement('button');
+    btn.className = 'char' + (settings[group] === type ? ' sel' : '');
+    btn.dataset.group = group; btn.dataset.val = type;
+    const cv = document.createElement('canvas');
+    cv.width = 128; cv.height = 152;
+    const cc = cv.getContext('2d');
+    cc.scale(1.2, 1.2);
+    drawChar(cc, type, 53, 122, group === 'c1' ? 1 : -1);
+    btn.append(cv, info.name);
+    wrap.appendChild(btn);
+  }
+});
+
+document.querySelectorAll('.opt, .char').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const { group, val } = btn.dataset;
+    settings[group] = group === 'target' ? +val : val;
+    document.querySelectorAll(`[data-group="${group}"].opt, [data-group="${group}"].char`)
+      .forEach(b => b.classList.toggle('sel', b === btn));
+    if (group === 'mode') syncMode();
+  });
+});
+
+function syncMode() {
+  const solo = settings.mode === 'cpu';
+  document.getElementById('diffRow').style.display = solo ? '' : 'none';
+  document.getElementById('c2Label').textContent = solo ? 'CPU (오른쪽)' : '2P (오른쪽)';
+  document.getElementById('arrowHint').style.display = solo ? '' : 'none';
+}
+syncMode();
+
+function startGame() {
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch {} }
+  menu.classList.add('hidden'); over.classList.add('hidden');
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  document.getElementById('touch').classList.toggle('show', coarse);
+  newGame();
+  if (document.activeElement) document.activeElement.blur();
+}
+
+function showOver(w) {
+  const name = CHARS[game.players[w].char].name;
+  const who = w === 0 ? '1P' : settings.mode === 'cpu' ? 'CPU' : '2P';
+  document.getElementById('overTitle').textContent = `🏆 ${name} (${who}) 승리!`;
+  document.getElementById('overScore').textContent = `${game.score[0]} : ${game.score[1]}`;
+  over.classList.remove('hidden');
+}
+
+document.getElementById('startBtn').onclick = startGame;
+document.getElementById('againBtn').onclick = startGame;
+document.getElementById('menuBtn').onclick = () => {
+  over.classList.add('hidden'); menu.classList.remove('hidden'); game = null;
+};
+</script>
+</body>
+</html>
